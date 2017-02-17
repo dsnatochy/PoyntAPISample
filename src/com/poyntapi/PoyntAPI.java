@@ -2,7 +2,6 @@ package com.poyntapi;
 
 import co.poynt.api.model.*;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -15,17 +14,14 @@ import okhttp3.*;
 import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
-import org.bouncycastle.util.*;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.*;
-import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.Security;
 import java.security.interfaces.RSAPrivateKey;
 import java.util.*;
-import java.util.Arrays;
 
 /**
  * Created by dennis on 2/9/17.
@@ -45,6 +41,9 @@ public class PoyntAPI {
     // business id and store id
     private String businessId;
     private String storeId;
+
+    //terminal id
+    private String storeDeviceId;
 
 
     public PoyntAPI() throws Exception{
@@ -75,9 +74,10 @@ public class PoyntAPI {
         privateKeyFile = prop.getProperty("privateKeyFile");
         businessId = prop.getProperty("businessId");
         storeId = prop.getProperty("storeId");
+        storeDeviceId = prop.getProperty("storeDeviceId");
 
         if (apiEndpoint == null || applicationId == null || privateKeyFile == null ||
-                businessId == null || storeId == null){
+                businessId == null || storeId == null || storeDeviceId == null){
             System.err.println("One of the required properties missing from the config file");
             System.exit(1);
         }
@@ -313,6 +313,45 @@ public class PoyntAPI {
         return newCustomer.getId();
     }
 
+    public Customer createCustomerWithCard(String firstName, String lastName, String cardNumber, int expMonth, int expYear)
+            throws Exception{
+        String urlString = apiEndpoint + "/businesses/" + businessId + "/customers";
+
+        Customer customer = new Customer();
+
+        customer.setFirstName(firstName);
+        customer.setLastName(lastName);
+
+        Card card = new Card();
+        card.setCardHolderFirstName(firstName);
+        card.setCardHolderLastName(lastName);
+        card.setNumber(cardNumber);
+        card.setExpirationMonth(expMonth);
+        card.setExpirationYear(expYear);
+
+        customer.setCards(Collections.singletonList(card));
+
+        ObjectMapper om = new ObjectMapper();
+        String customerJson = om.writeValueAsString(customer);
+        if (DEBUG) System.out.println("Customer request: " + customerJson);
+
+        String response = doPost(customerJson, urlString);
+        if (DEBUG) System.out.println("Customer Response: " + response);
+        Customer newCustomer = om.readValue(response, Customer.class);
+        return newCustomer;
+    }
+
+    public Business getBusinessByStoreDeviceId() throws Exception{
+        String urlString = apiEndpoint + "/businesses/?storeDeviceId=" + storeDeviceId;
+        String response = doGet(urlString);
+        ObjectMapper om = new ObjectMapper();
+        Business biz = om.readValue(response, Business.class);
+
+        if (DEBUG) System.out.println(biz);
+
+        return biz;
+    }
+
     public List<StoreDevice> getStoreDevices() throws Exception{
         String urlString = apiEndpoint + "/businesses/" + businessId + "/stores/" + storeId + "/storeDevices";
         if(DEBUG) System.out.println("getStoreDevices url: " + urlString);
@@ -377,12 +416,26 @@ public class PoyntAPI {
             /*
              * Create new Customer
              */
-            long customerId = api.createCustomer("John", "Smith", "https://pbs.twimg.com/media/ChfXfnMUoAAmQl5.jpg");
+            //long customerId = api.createCustomer("John", "Smith", "https://pbs.twimg.com/media/ChfXfnMUoAAmQl5.jpg");
+
 
             /*
              * Create and push new order to the store
              */
-            Order newOrder = api.createOrder(customerId);
+            // Order newOrder = api.createOrder(customerId);
+
+
+            /*
+             * Create customer with card info
+             */
+            //Customer customerWithCard = api.createCustomerWithCard("John", "Smith", "4111111111111111", 1, 2020);
+
+
+            /*
+             * Look up business by terminal (storeDevice) id
+             */
+            Business business = api.getBusinessByStoreDeviceId();
+
 
             /*
              * Create a transaction by posting card details to Poynt server
