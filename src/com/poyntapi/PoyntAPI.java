@@ -58,7 +58,7 @@ public class PoyntAPI {
             storeId=c2855b41-xxxx
 
          */
-        File configFile = new File("src/config.properties");
+        File configFile = new File("src/config-ci.properties");
         if (!configFile.exists()) {
             System.err.println("Config file does not exist");
             System.exit(1);
@@ -217,13 +217,17 @@ public class PoyntAPI {
         return ordersResponse.getOrders();
     }
 
-    public Order createOrder(Long customerId) throws Exception{
-        String endpoint = apiEndpoint + "/businesses/" + businessId + "/orders";
+    public Order createOrder(Long customerId, String orderId) throws Exception{
+        String endpoint = apiEndpoint + "/businesses/" + businessId + "/orders?process=true";
 
         long amount = 100l;
         float quantity = 10.0f;
 
         Order order = new Order();
+
+        if (orderId != null){
+            order.setId(UUID.fromString(orderId));
+        }
 
         ClientContext context = new ClientContext();
         context.setBusinessId(UUID.fromString(businessId));
@@ -243,12 +247,13 @@ public class PoyntAPI {
         item.setUnitPrice(amount);
         item.setStatus(OrderItemStatus.FULFILLED);
         item.setTax(0l);
+/*
 
         Discount discount = new Discount();
         discount.setAmount(50l);
         discount.setCustomName("custom discount");
-
         item.setDiscounts(Arrays.asList(discount));
+*/
 
         items.add(item);
         order.setItems(items);
@@ -264,13 +269,16 @@ public class PoyntAPI {
         orderAmounts.setCurrency("USD");
         orderAmounts.setSubTotal(new Long(amount*(long)quantity));
 
+/*
+
         Discount orderLevelDiscount = new Discount();
         orderLevelDiscount.setAmount(-400l);
         orderLevelDiscount.setCustomName("Order level discount");
         order.setDiscounts(Arrays.asList(orderLevelDiscount));
+*/
 
-        // static discount. typically should be calculated as sum of item level + order level discounts
-        orderAmounts.setDiscountTotal(-900l);
+//        static discount. typically should be calculated as sum of item level + order level discounts
+//        orderAmounts.setDiscountTotal(-900l);
 
         order.setAmounts(orderAmounts);
 
@@ -286,6 +294,7 @@ public class PoyntAPI {
         String response = doPost(om.writeValueAsString(order), endpoint);
 
         Order newOrder = om.readValue(response, Order.class);
+        if (DEBUG) System.out.println(newOrder);
         return newOrder;
     }
 
@@ -377,6 +386,117 @@ public class PoyntAPI {
         return om.readValue(response, Catalog.class);
     }
 
+    public Transaction createTransaction(String orderId) throws Exception{
+        /*   Example JSON transaction
+            {
+                "action":"AUTHORIZE",
+                "fundingSource": {
+                    "type":"CREDIT_DEBIT",
+                    "card":{
+                        "number":"4111111111111111",
+                        "expirationMonth":12,
+                        "expirationYear":2020
+                    },
+                    "entryDetails":{
+                       "customerPresenceStatus":"PRESENT",
+                       "entryMode":"KEYED"
+                    }
+                 },
+                 "references": [
+                    {
+                       "type": "CUSTOM",
+                       "customType": "invoice",
+                       "id": "123456789"
+                    }
+                 ],
+                 "amounts": {
+                    "currency":"USD",
+                    "orderAmount":1287,
+                    "cashbackAmount":0,
+                    "transactionAmount":1287,
+                    "tipAmount":0
+                 },
+                 "context": {
+                    "transmissionAtLocal": "2014-09-11T23:14:44Z"
+                 }
+              }
+         */
+
+        String urlString = apiEndpoint + "/businesses/" + businessId + "/transactions";
+
+        Transaction transaction = generateTransaction();
+
+        if (orderId != null){
+            TransactionReference orderReference = new TransactionReference();
+            orderReference.setType(TransactionReferenceType.POYNT_ORDER);
+            orderReference.setId(orderId.toString());
+            if (transaction.getReferences() != null){
+                transaction.getReferences().add(orderReference);
+            }else {
+                transaction.setReferences(Collections.singletonList(orderReference));
+            }
+        }
+
+
+
+        ObjectMapper om = new ObjectMapper();
+        String transactionJson = om.writeValueAsString(transaction);
+        if (DEBUG) System.out.println("Transaction request: " + transactionJson);
+
+        String response = doPost(transactionJson, urlString);
+        if (DEBUG) System.out.println("Transaction Response: " + response);
+        Transaction newTransaction = om.readValue(response, Transaction.class);
+        return newTransaction;
+    }
+
+    private Transaction generateTransaction(){
+        Transaction transaction = new Transaction();
+        transaction.setAction(TransactionAction.AUTHORIZE);
+
+        FundingSource fs = new FundingSource();
+        fs.setType(FundingSourceType.CREDIT_DEBIT);
+        Card card = new Card();
+        card.setNumber("4111111111111111");
+        card.setExpirationMonth(12);
+        card.setExpirationYear(2020);
+        card.setCardHolderFirstName("John");
+        card.setCardHolderLastName("Smith");
+        fs.setCard(card);
+        FundingSourceEntryDetails entryDetails = new FundingSourceEntryDetails();
+        entryDetails.setCustomerPresenceStatus(CustomerPresenceStatus.ECOMMERCE);
+        entryDetails.setEntryMode(EntryMode.KEYED);
+        fs.setEntryDetails(entryDetails);
+        transaction.setFundingSource(fs);
+
+        TransactionReference reference = new TransactionReference();
+        reference.setType(TransactionReferenceType.CUSTOM);
+        reference.setCustomType("CapOneCustomRef");
+        reference.setId(UUID.randomUUID().toString());
+
+/*
+        UUID orderId = UUID.randomUUID();
+        TransactionReference orderReference = new TransactionReference();
+        orderReference.setType(TransactionReferenceType.POYNT_ORDER);
+        orderReference.setId(orderId.toString());
+        transaction.setReferences(Arrays.asList(reference, orderReference));
+*/
+
+        TransactionAmounts amounts = new TransactionAmounts();
+        amounts.setCurrency("USD");
+        amounts.setTransactionAmount(1000l);
+        amounts.setOrderAmount(1000l);
+        amounts.setTipAmount(0l);
+        transaction.setAmounts(amounts);
+
+        ClientContext context = new ClientContext();
+        context.setTransmissionAtLocal(Calendar.getInstance());
+        context.setBusinessId(UUID.fromString(businessId));
+        context.setStoreId(UUID.fromString(storeId));
+        context.setStoreDeviceId(storeDeviceId);
+        transaction.setContext(context);
+
+        return transaction;
+    }
 
     public static void main(String[] args) {
 
@@ -406,7 +526,7 @@ public class PoyntAPI {
             /*
              * Filter orders by customer's card
              */
-            List<Order> orders = api.getOrdersForCustomer("439341","9403","06","2017");
+            List<Order> orders = api.getOrdersForCustomer("411111","1111","12","2020");
             if (orders != null) {
                 for (Order order : orders){
                     System.out.println("found order: " + order.getId());
@@ -416,13 +536,7 @@ public class PoyntAPI {
             /*
              * Create new Customer
              */
-            //long customerId = api.createCustomer("John", "Smith", "https://pbs.twimg.com/media/ChfXfnMUoAAmQl5.jpg");
-
-
-            /*
-             * Create and push new order to the store
-             */
-            // Order newOrder = api.createOrder(customerId);
+            long customerId = api.createCustomer("John", "Smith", "https://pbs.twimg.com/media/ChfXfnMUoAAmQl5.jpg");
 
 
             /*
@@ -437,10 +551,16 @@ public class PoyntAPI {
             Business business = api.getBusinessByStoreDeviceId();
 
 
+            String orderId = UUID.randomUUID().toString();
             /*
              * Create a transaction by posting card details to Poynt server
              */
-            //TODO Add sample
+            Transaction transaction = api.createTransaction(orderId);
+
+            /*
+             * Create and push new order to the store
+             */
+            Order newOrder = api.createOrder(customerId, orderId);
 
         } catch (Exception e) {
             e.printStackTrace();

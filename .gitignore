@@ -1,5 +1,5 @@
-src/config.properties
-src/privateKey.pem
+src/*.properties
+src/*.pem
 target/*
 PoyntAPISample.iml
 .idea/*
