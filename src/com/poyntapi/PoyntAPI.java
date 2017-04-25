@@ -45,6 +45,10 @@ public class PoyntAPI {
     //terminal id
     private String storeDeviceId;
 
+    // transaction action could be either SALE or AUTHORIZE
+    // depending on merchant's processor settings
+    private TransactionAction transactionAction;
+
 
     public PoyntAPI() throws Exception{
 
@@ -58,7 +62,7 @@ public class PoyntAPI {
             storeId=c2855b41-xxxx
 
          */
-        File configFile = new File("src/config-ci.properties");
+        File configFile = new File("src/config.properties");
         if (!configFile.exists()) {
             System.err.println("Config file does not exist");
             System.exit(1);
@@ -83,7 +87,24 @@ public class PoyntAPI {
         }
 
         accessToken = getAccessToken();
+        transactionAction = getTransactionActionForStore();
     }
+
+    private TransactionAction getTransactionActionForStore() throws Exception{
+        String urlString = apiEndpoint + "/businesses/" + businessId + "/stores/" + storeId;
+        String jsonResponse = doGet(urlString);
+        ObjectMapper om = new ObjectMapper();
+        Store store = om.readValue(jsonResponse, Store.class);
+        if (store != null && store.getAttributes() != null){
+            String purchaseAction = store.getAttributes().get("purchaseAction");
+            if ("SALE".equals(purchaseAction)){
+                return TransactionAction.SALE;
+            }
+        }
+        // default to AUTHORIZE
+        return TransactionAction.AUTHORIZE;
+    }
+
     private String getJWT() throws Exception{
         File f = new File(privateKeyFile);
         if (!f.exists()){
@@ -451,7 +472,7 @@ public class PoyntAPI {
 
     private Transaction generateTransaction(){
         Transaction transaction = new Transaction();
-        transaction.setAction(TransactionAction.AUTHORIZE);
+        transaction.setAction(transactionAction);
 
         FundingSource fs = new FundingSource();
         fs.setType(FundingSourceType.CREDIT_DEBIT);
