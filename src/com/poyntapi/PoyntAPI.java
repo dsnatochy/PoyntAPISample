@@ -494,6 +494,10 @@ public class PoyntAPI {
         reference.setCustomType("CapOneCustomRef");
         reference.setId(UUID.randomUUID().toString());
 
+        List<TransactionReference> referencesList = new ArrayList<>();
+        referencesList.add(reference);
+        transaction.setReferences(referencesList);
+
 /*
         UUID orderId = UUID.randomUUID();
         TransactionReference orderReference = new TransactionReference();
